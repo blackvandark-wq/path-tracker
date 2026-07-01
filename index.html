@@ -1,0 +1,922 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
+  <title>Path Tracker</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@2.44.0/tabler-icons.min.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Outfit:wght@400;500;600&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --green: #2d9e5f;
+      --green-light: #b7f0d0;
+      --green-dark: #1a5c3a;
+      --bg: #f0ede8;
+      --surface: #fff;
+      --surface2: #f7f5f2;
+      --border: rgba(0,0,0,0.09);
+      --text: #1a1a18;
+      --text2: #7a7870;
+      --radius: 12px;
+      --font: 'Outfit', sans-serif;
+      --mono: 'DM Mono', monospace;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+    body { font-family: var(--font); background: var(--bg); min-height: 100vh; color: var(--text); }
+
+    /* ── NAV ── */
+    #nav {
+      background: var(--surface);
+      border-bottom: 0.5px solid var(--border);
+      padding: 0 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      height: 52px;
+      position: sticky; top: 0; z-index: 900;
+    }
+    #nav-logo { font-size: 15px; font-weight: 600; display: flex; align-items: center; gap: 7px; color: var(--text); }
+    #nav-logo i { color: var(--green); font-size: 18px; }
+    #nav-tabs { display: flex; gap: 2px; }
+    .nav-tab {
+      height: 32px; padding: 0 12px;
+      border-radius: 8px; border: none; background: none;
+      font-family: var(--font); font-size: 13px; font-weight: 500;
+      color: var(--text2); cursor: pointer; transition: all 0.15s;
+      display: flex; align-items: center; gap: 5px;
+    }
+    .nav-tab:hover { background: var(--surface2); color: var(--text); }
+    .nav-tab.active { background: var(--surface2); color: var(--text); }
+    #nav-profile-btn {
+      width: 32px; height: 32px; border-radius: 50%;
+      border: 2px solid var(--green);
+      background: var(--green-dark); color: var(--green-light);
+      font-family: var(--mono); font-size: 12px; font-weight: 500;
+      cursor: pointer; display: flex; align-items: center; justify-content: center;
+      overflow: hidden; transition: transform 0.15s;
+    }
+    #nav-profile-btn:hover { transform: scale(1.07); }
+    #nav-profile-btn img { width: 100%; height: 100%; object-fit: cover; }
+
+    /* ── VIEWS ── */
+    .view { display: none; padding: 14px 12px; max-width: 700px; margin: 0 auto; }
+    .view.active { display: block; }
+
+    /* ── PROFILE MODAL ── */
+    #profile-modal {
+      display: none;
+      position: fixed; inset: 0; z-index: 1000;
+      background: rgba(0,0,0,0.4);
+      align-items: center; justify-content: center;
+      padding: 16px;
+    }
+    #profile-modal.open { display: flex; }
+    #profile-card {
+      background: var(--surface);
+      border-radius: 16px;
+      padding: 24px;
+      width: 100%; max-width: 360px;
+      border: 0.5px solid var(--border);
+    }
+    #profile-card h2 { font-size: 17px; font-weight: 600; margin-bottom: 18px; display: flex; align-items: center; gap: 8px; }
+    .form-row { margin-bottom: 14px; }
+    .form-label { font-size: 12px; color: var(--text2); margin-bottom: 5px; display: block; }
+    .form-input {
+      width: 100%; height: 38px; border-radius: 8px;
+      border: 0.5px solid rgba(0,0,0,0.15);
+      padding: 0 12px; font-family: var(--font); font-size: 14px;
+      background: var(--surface2); color: var(--text);
+      outline: none; transition: border-color 0.15s;
+    }
+    .form-input:focus { border-color: var(--green); }
+
+    #avatar-preview {
+      width: 64px; height: 64px; border-radius: 50%;
+      margin: 0 auto 14px;
+      display: flex; align-items: center; justify-content: center;
+      font-family: var(--mono); font-size: 20px; font-weight: 500;
+      border: 3px solid var(--green);
+      overflow: hidden; cursor: pointer; position: relative;
+    }
+    #avatar-preview input[type=file] {
+      position: absolute; inset: 0; opacity: 0; cursor: pointer; font-size: 0;
+    }
+    #avatar-preview .avatar-overlay {
+      position: absolute; inset: 0; background: rgba(0,0,0,0.35);
+      display: flex; align-items: center; justify-content: center;
+      opacity: 0; transition: opacity 0.15s;
+    }
+    #avatar-preview:hover .avatar-overlay { opacity: 1; }
+    #avatar-preview .avatar-overlay i { color: #fff; font-size: 20px; }
+
+    .color-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 6px; }
+    .color-swatch {
+      width: 28px; height: 28px; border-radius: 50%;
+      border: 2.5px solid transparent; cursor: pointer; transition: transform 0.12s;
+    }
+    .color-swatch:hover { transform: scale(1.15); }
+    .color-swatch.selected { border-color: var(--text); }
+
+    .btn-row-modal { display: flex; gap: 8px; margin-top: 20px; }
+    .btn-primary {
+      flex: 1; height: 40px; border-radius: 8px;
+      background: var(--green-dark); border: none; color: var(--green-light);
+      font-family: var(--font); font-size: 14px; font-weight: 500;
+      cursor: pointer; transition: background 0.12s;
+    }
+    .btn-primary:hover { background: var(--green); }
+    .btn-ghost {
+      height: 40px; padding: 0 14px; border-radius: 8px;
+      border: 0.5px solid var(--border); background: none;
+      font-family: var(--font); font-size: 14px; color: var(--text2);
+      cursor: pointer; transition: background 0.12s;
+    }
+    .btn-ghost:hover { background: var(--surface2); color: var(--text); }
+
+    /* ── TRACKER VIEW ── */
+    #map {
+      width: 100%; height: 360px;
+      border-radius: var(--radius);
+      border: 0.5px solid var(--border);
+      overflow: hidden; margin-bottom: 10px;
+    }
+    .map-badge {
+      background: rgba(255,255,255,0.95);
+      border: 0.5px solid rgba(0,0,0,0.1);
+      border-radius: 20px; padding: 5px 11px;
+      font-size: 12px; font-family: var(--mono); color: #444;
+      display: flex; align-items: center; gap: 6px;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.07);
+    }
+    #status-dot { width:7px; height:7px; border-radius:50%; background:#bbb; flex-shrink:0; transition:background 0.3s; }
+    #status-dot.active { background:#2d9e5f; animation:blink 1.5s infinite; }
+    #status-dot.paused { background:#d97706; }
+    @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.3} }
+
+    .panel {
+      background: var(--surface); border: 0.5px solid var(--border);
+      border-radius: var(--radius); padding: 14px 16px; margin-bottom: 10px;
+    }
+    #stats-row {
+      display: grid; grid-template-columns: repeat(4, minmax(0,1fr));
+      gap: 7px; margin-bottom: 12px;
+    }
+    .stat-card { background: var(--surface2); border-radius: 8px; padding: 8px 10px; text-align: center; }
+    .stat-label { font-size: 11px; color: var(--text2); margin-bottom: 3px; }
+    .stat-value { font-size: 16px; font-weight: 500; color: var(--text); font-family: var(--mono); }
+    .stat-unit { font-size: 10px; color: var(--text2); margin-top: 1px; }
+
+    #btn-row { display: flex; gap: 8px; margin-bottom: 10px; }
+    .btn {
+      flex:1; height: 40px; border-radius: 8px;
+      border: 0.5px solid rgba(0,0,0,0.13);
+      background: transparent; cursor: pointer;
+      font-family: var(--font); font-size: 13px; font-weight: 500; color: var(--text);
+      display: flex; align-items: center; justify-content: center; gap: 6px;
+      transition: background 0.12s, transform 0.08s;
+    }
+    .btn:hover { background: var(--surface2); }
+    .btn:active { transform: scale(0.97); }
+    .btn.green { background: var(--green-dark); border-color: var(--green); color: var(--green-light); }
+    .btn.green:hover { background: var(--green); }
+    .btn:disabled { opacity: 0.35; cursor: not-allowed; transform: none; }
+
+    #bottom-row { display: flex; justify-content: space-between; align-items: center; }
+    .text-btn {
+      background: none; border: none; cursor: pointer;
+      font-size: 12px; color: var(--text2); font-family: var(--font);
+      display: flex; align-items: center; gap: 4px; padding: 4px 0;
+    }
+    .text-btn:hover { color: var(--text); }
+
+    #elev-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; }
+    #elev-title { font-size:13px; font-weight:500; display:flex; align-items:center; gap:6px; }
+    #elev-stats { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:7px; margin-bottom:12px; }
+    .elev-stat { background:var(--surface2); border-radius:8px; padding:8px 10px; text-align:center; }
+    .elev-stat-label { font-size:10px; color:var(--text2); margin-bottom:2px; }
+    .elev-stat-value { font-size:15px; font-weight:500; font-family:var(--mono); }
+    .elev-stat-unit { font-size:10px; color:var(--text2); }
+    #chart-wrap { height:120px; position:relative; }
+
+    #sim-notice {
+      background:#fffbeb; border:0.5px solid #fcd34d; border-radius:8px;
+      padding:7px 12px; font-size:12px; color:#92400e;
+      display:none; align-items:center; gap:6px; margin-bottom:10px;
+    }
+    #no-elev-notice { font-size:11px; color:var(--text2); display:none; align-items:center; gap:4px; }
+
+    /* ── ROUTES VIEW ── */
+    #routes-header {
+      display: flex; justify-content: space-between; align-items: center;
+      margin-bottom: 12px;
+    }
+    #routes-header h2 { font-size: 17px; font-weight: 600; }
+
+    #import-btn {
+      height: 34px; padding: 0 14px; border-radius: 8px;
+      border: 0.5px solid var(--border); background: var(--surface);
+      font-family: var(--font); font-size: 13px; font-weight: 500;
+      color: var(--text); cursor: pointer; display: flex; align-items: center; gap: 5px;
+      transition: background 0.12s;
+    }
+    #import-btn:hover { background: var(--surface2); }
+    #import-file { display: none; }
+
+    #compare-map {
+      width: 100%; height: 340px;
+      border-radius: var(--radius); border: 0.5px solid var(--border);
+      overflow: hidden; margin-bottom: 10px;
+    }
+
+    #route-list { display: flex; flex-direction: column; gap: 8px; }
+
+    .route-card {
+      background: var(--surface); border: 0.5px solid var(--border);
+      border-radius: var(--radius); padding: 12px 14px;
+      display: flex; align-items: center; gap: 12px;
+      transition: background 0.12s;
+    }
+    .route-card:hover { background: var(--surface2); }
+
+    .route-avatar {
+      width: 38px; height: 38px; border-radius: 50%; flex-shrink: 0;
+      display: flex; align-items: center; justify-content: center;
+      font-family: var(--mono); font-size: 13px; font-weight: 500;
+      overflow: hidden;
+    }
+    .route-avatar img { width:100%; height:100%; object-fit:cover; }
+
+    .route-info { flex: 1; min-width: 0; }
+    .route-name { font-size: 14px; font-weight: 500; }
+    .route-meta { font-size: 12px; color: var(--text2); margin-top: 2px; }
+
+    .route-stats { display: flex; gap: 12px; align-items: center; }
+    .route-stat { text-align: right; }
+    .route-stat-val { font-size: 14px; font-weight: 500; font-family: var(--mono); }
+    .route-stat-lbl { font-size: 10px; color: var(--text2); }
+
+    .route-actions { display: flex; gap: 4px; }
+    .icon-btn {
+      width: 30px; height: 30px; border-radius: 7px;
+      border: 0.5px solid var(--border); background: none; cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      color: var(--text2); font-size: 15px; transition: all 0.12s;
+    }
+    .icon-btn:hover { background: var(--surface2); color: var(--text); }
+    .icon-btn.danger:hover { background: #fee2e2; color: #dc2626; border-color: #fca5a5; }
+
+    .legend-dot {
+      width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0;
+    }
+
+    #empty-routes {
+      text-align: center; padding: 40px 20px; color: var(--text2);
+    }
+    #empty-routes i { font-size: 36px; margin-bottom: 10px; display: block; opacity: 0.4; }
+    #empty-routes p { font-size: 14px; }
+
+    /* ── TOAST ── */
+    #toast {
+      position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%) translateY(80px);
+      background: #1a1a18; color: #fff; font-size: 13px;
+      padding: 9px 18px; border-radius: 20px;
+      transition: transform 0.25s; z-index: 9999;
+      white-space: nowrap; pointer-events: none;
+    }
+    #toast.show { transform: translateX(-50%) translateY(0); }
+
+    @media (max-width: 480px) {
+      .nav-tab span { display: none; }
+      #map, #compare-map { height: 300px; }
+      #stats-row { grid-template-columns: repeat(2, minmax(0,1fr)); }
+    }
+  </style>
+</head>
+<body>
+
+<!-- NAV -->
+<nav id="nav">
+  <div id="nav-logo">
+    <i class="ti ti-route" aria-hidden="true"></i>
+    Path Tracker
+  </div>
+  <div id="nav-tabs">
+    <button class="nav-tab active" onclick="showView('track')" id="tab-track">
+      <i class="ti ti-player-record" aria-hidden="true"></i>
+      <span>Aufzeichnen</span>
+    </button>
+    <button class="nav-tab" onclick="showView('routes')" id="tab-routes">
+      <i class="ti ti-map-2" aria-hidden="true"></i>
+      <span>Routen</span>
+    </button>
+  </div>
+  <button id="nav-profile-btn" onclick="openProfile()" aria-label="Profil bearbeiten">
+    <span id="nav-avatar-initials">?</span>
+  </button>
+</nav>
+
+<!-- PROFILE MODAL -->
+<div id="profile-modal" role="dialog" aria-modal="true" aria-label="Profil bearbeiten">
+  <div id="profile-card">
+    <h2><i class="ti ti-user-circle" aria-hidden="true"></i> Mein Profil</h2>
+    <div id="avatar-preview" title="Foto hochladen">
+      <span id="avatar-initials-big">?</span>
+      <div class="avatar-overlay"><i class="ti ti-camera" aria-hidden="true"></i></div>
+      <input type="file" accept="image/*" id="avatar-upload" onchange="handleAvatarUpload(event)" />
+    </div>
+    <div class="form-row">
+      <label class="form-label" for="input-name">Name</label>
+      <input class="form-input" type="text" id="input-name" placeholder="Dein Name" maxlength="30" />
+    </div>
+    <div class="form-row">
+      <label class="form-label">Routenfarbe</label>
+      <div class="color-row" id="color-swatches"></div>
+    </div>
+    <div class="btn-row-modal">
+      <button class="btn-ghost" onclick="closeProfile()">Abbrechen</button>
+      <button class="btn-primary" onclick="saveProfile()">
+        <i class="ti ti-check" aria-hidden="true"></i> Speichern
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- VIEW: TRACK -->
+<div class="view active" id="view-track">
+  <div id="map"></div>
+
+  <div id="sim-notice">
+    <i class="ti ti-alert-triangle" aria-hidden="true"></i>
+    GPS nicht verfügbar — Simulation aktiv
+  </div>
+
+  <div class="panel">
+    <div id="stats-row">
+      <div class="stat-card">
+        <div class="stat-label">Distanz</div>
+        <div class="stat-value" id="stat-dist">0.00</div>
+        <div class="stat-unit">km</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Zeit</div>
+        <div class="stat-value" id="stat-time">00:00</div>
+        <div class="stat-unit">mm:ss</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Tempo</div>
+        <div class="stat-value" id="stat-speed">0.0</div>
+        <div class="stat-unit">km/h</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Punkte</div>
+        <div class="stat-value" id="stat-pts">0</div>
+        <div class="stat-unit">gesamt</div>
+      </div>
+    </div>
+    <div id="btn-row">
+      <button class="btn green" id="btn-start" onclick="handleStart()">
+        <i class="ti ti-player-play" aria-hidden="true"></i> Start
+      </button>
+      <button class="btn" id="btn-pause" onclick="handlePause()" disabled>
+        <i class="ti ti-player-pause" aria-hidden="true"></i> Pause
+      </button>
+      <button class="btn" id="btn-stop" onclick="handleStop()" disabled>
+        <i class="ti ti-square" aria-hidden="true"></i> Stop
+      </button>
+    </div>
+    <div id="bottom-row">
+      <button class="text-btn" onclick="handleCenter()">
+        <i class="ti ti-focus-centered" aria-hidden="true"></i> Zentrieren
+      </button>
+      <button class="text-btn" onclick="exportGPX()">
+        <i class="ti ti-download" aria-hidden="true"></i> GPX exportieren
+      </button>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div id="elev-header">
+      <div id="elev-title"><i class="ti ti-mountain" aria-hidden="true"></i> Höhenprofil</div>
+      <div id="no-elev-notice"><i class="ti ti-info-circle" aria-hidden="true"></i> Keine Höhendaten</div>
+    </div>
+    <div id="elev-stats">
+      <div class="elev-stat">
+        <div class="elev-stat-label">Aktuell</div>
+        <div class="elev-stat-value" id="elev-current">—</div>
+        <div class="elev-stat-unit">m ü. NN</div>
+      </div>
+      <div class="elev-stat">
+        <div class="elev-stat-label"><i class="ti ti-arrow-up" aria-hidden="true"></i> Aufstieg</div>
+        <div class="elev-stat-value" id="elev-up">0</div>
+        <div class="elev-stat-unit">m</div>
+      </div>
+      <div class="elev-stat">
+        <div class="elev-stat-label"><i class="ti ti-arrow-down" aria-hidden="true"></i> Abstieg</div>
+        <div class="elev-stat-value" id="elev-down">0</div>
+        <div class="elev-stat-unit">m</div>
+      </div>
+    </div>
+    <div id="chart-wrap"><canvas id="elevChart"></canvas></div>
+  </div>
+</div>
+
+<!-- VIEW: ROUTES -->
+<div class="view" id="view-routes">
+  <div id="routes-header">
+    <h2><i class="ti ti-map-2" aria-hidden="true" style="font-size:18px;vertical-align:-2px;margin-right:6px;color:var(--green)"></i>Routen vergleichen</h2>
+    <label id="import-btn">
+      <i class="ti ti-upload" aria-hidden="true"></i> GPX importieren
+      <input type="file" id="import-file" accept=".gpx" multiple onchange="importGPX(event)" />
+    </label>
+  </div>
+
+  <div id="compare-map"></div>
+
+  <div id="route-list"></div>
+  <div id="empty-routes">
+    <i class="ti ti-map-off"></i>
+    <p>Noch keine Routen gespeichert.<br>Zeichne eine Route auf oder importiere eine GPX-Datei.</p>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+// ── PALETTE ──
+const COLORS = ['#2d9e5f','#e05c2a','#4a7fcc','#c044a0','#d4a017','#7b52cc','#1ea3a3','#cc4444'];
+let selectedColor = COLORS[0];
+
+// ── PROFILE ──
+let profile = JSON.parse(localStorage.getItem('pt_profile') || 'null') || { name:'', color: COLORS[0], avatar: null };
+
+function initColorSwatches() {
+  const el = document.getElementById('color-swatches');
+  el.innerHTML = COLORS.map(c =>
+    `<div class="color-swatch ${c===profile.color?'selected':''}" style="background:${c}" onclick="selectColor('${c}')" title="${c}"></div>`
+  ).join('');
+  selectedColor = profile.color;
+}
+
+function selectColor(c) {
+  selectedColor = c;
+  document.querySelectorAll('.color-swatch').forEach(s => s.classList.toggle('selected', s.style.background===c||s.style.backgroundColor===c));
+}
+
+function getInitials(name) {
+  return name ? name.trim().split(' ').map(w=>w[0]).join('').toUpperCase().slice(0,2) : '?';
+}
+
+function updateNavAvatar() {
+  const btn = document.getElementById('nav-profile-btn');
+  const ini = document.getElementById('nav-avatar-initials');
+  btn.style.background = profile.color || 'var(--green-dark)';
+  if (profile.avatar) {
+    btn.innerHTML = `<img src="${profile.avatar}" alt="Avatar" />`;
+  } else {
+    btn.innerHTML = `<span id="nav-avatar-initials" style="font-family:var(--mono);font-size:12px;font-weight:500;color:${lighten(profile.color)}">${getInitials(profile.name)}</span>`;
+  }
+}
+
+function lighten(hex) { return '#fff'; }
+
+function openProfile() {
+  document.getElementById('input-name').value = profile.name || '';
+  initColorSwatches();
+  const big = document.getElementById('avatar-initials-big');
+  const prev = document.getElementById('avatar-preview');
+  prev.style.background = profile.color;
+  if (profile.avatar) {
+    big.style.display = 'none';
+    const img = prev.querySelector('img') || document.createElement('img');
+    img.src = profile.avatar; img.style.cssText='position:absolute;inset:0;width:100%;height:100%;object-fit:cover;border-radius:50%';
+    if (!prev.querySelector('img')) prev.insertBefore(img, prev.firstChild);
+  } else {
+    big.style.display = '';
+    big.textContent = getInitials(profile.name);
+    const img = prev.querySelector('img'); if(img) img.remove();
+  }
+  document.getElementById('profile-modal').classList.add('open');
+}
+
+function closeProfile() { document.getElementById('profile-modal').classList.remove('open'); }
+
+function handleAvatarUpload(e) {
+  const file = e.target.files[0]; if(!file) return;
+  const reader = new FileReader();
+  reader.onload = ev => {
+    profile.avatar = ev.target.result;
+    const prev = document.getElementById('avatar-preview');
+    const big = document.getElementById('avatar-initials-big');
+    big.style.display = 'none';
+    let img = prev.querySelector('img');
+    if (!img) { img = document.createElement('img'); img.style.cssText='position:absolute;inset:0;width:100%;height:100%;object-fit:cover;border-radius:50%'; prev.insertBefore(img, prev.firstChild); }
+    img.src = ev.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+
+function saveProfile() {
+  const name = document.getElementById('input-name').value.trim();
+  if (!name) { showToast('Bitte einen Namen eingeben'); return; }
+  profile.name = name;
+  profile.color = selectedColor;
+  localStorage.setItem('pt_profile', JSON.stringify(profile));
+  updateNavAvatar();
+  closeProfile();
+  showToast('Profil gespeichert');
+}
+
+// ── VIEWS ──
+function showView(v) {
+  document.querySelectorAll('.view').forEach(el => el.classList.remove('active'));
+  document.querySelectorAll('.nav-tab').forEach(el => el.classList.remove('active'));
+  document.getElementById('view-'+v).classList.add('active');
+  document.getElementById('tab-'+v).classList.add('active');
+  if (v === 'routes') { setTimeout(renderRoutesView, 50); }
+}
+
+// ── TRACKER ──
+let map, routeLayer, startMarker, currentMarker, watchId;
+let points=[], elevations=[], distances=[];
+let tracking=false, paused=false;
+let startTime=null, pauseOffset=0, pauseStart=null, timerInterval=null;
+let simInterval=null, usingSimulation=false;
+let simLat=51.5145, simLon=7.4653, simAngle=Math.PI*0.3, simElev=86;
+let elevChart=null, hasRealElev=false;
+let totalUp=0, totalDown=0;
+
+function initMap() {
+  map = L.map('map',{zoomControl:true}).setView([51.5145,7.4653],15);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
+    attribution:'© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',maxZoom:19
+  }).addTo(map);
+  routeLayer = L.polyline([],{color:profile.color||'#2d9e5f',weight:4,opacity:0.9,lineJoin:'round',lineCap:'round'}).addTo(map);
+  const sc=L.control({position:'topleft'});
+  sc.onAdd=()=>{const d=L.DomUtil.create('div','map-badge');d.innerHTML='<div id="status-dot"></div><span id="status-text">Bereit</span>';return d;};
+  sc.addTo(map);
+  const cc=L.control({position:'topright'});
+  cc.onAdd=()=>{const d=L.DomUtil.create('div','map-badge');d.style.cssText='flex-direction:column;align-items:flex-end;gap:2px;border-radius:8px';d.innerHTML='<div id="lat-d">Lat: —</div><div id="lon-d">Lon: —</div><div id="acc-d" style="color:#aaa">±—</div>';return d;};
+  cc.addTo(map);
+}
+
+function initElevChart() {
+  const ctx=document.getElementById('elevChart').getContext('2d');
+  elevChart=new Chart(ctx,{
+    type:'line',
+    data:{labels:[],datasets:[{data:[],borderColor:profile.color||'#2d9e5f',backgroundColor:(profile.color||'#2d9e5f')+'22',borderWidth:2,pointRadius:0,tension:0.4,fill:true}]},
+    options:{responsive:true,maintainAspectRatio:false,animation:false,
+      plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>Math.round(c.parsed.y)+' m',title:c=>distances[c[0].dataIndex]!==undefined?distances[c[0].dataIndex].toFixed(2)+' km':''},displayColors:false}},
+      scales:{
+        x:{ticks:{maxTicksLimit:6,font:{size:10},color:'#aaa',callback:(v,i)=>distances[i]!==undefined?distances[i].toFixed(1):''},grid:{color:'rgba(0,0,0,0.04)'},border:{display:false}},
+        y:{ticks:{maxTicksLimit:5,font:{size:10},color:'#aaa',callback:v=>Math.round(v)+' m'},grid:{color:'rgba(0,0,0,0.04)'},border:{display:false}}
+      }
+    }
+  });
+}
+
+function haversine(a,b){const R=6371,dLat=(b[0]-a[0])*Math.PI/180,dLon=(b[1]-a[1])*Math.PI/180;return R*2*Math.asin(Math.sqrt(Math.sin(dLat/2)**2+Math.cos(a[0]*Math.PI/180)*Math.cos(b[0]*Math.PI/180)*Math.sin(dLon/2)**2));}
+function totalDist(){let d=0;for(let i=1;i<points.length;i++)d+=haversine(points[i-1],points[i]);return d;}
+
+function updateElevChart(){
+  if(!elevChart||elevations.length<2)return;
+  const step=Math.max(1,Math.floor(elevations.length/80));
+  const se=[],sd=[],lb=[];let d=0;
+  for(let i=0;i<elevations.length;i+=step){
+    if(i>0)d+=haversine(points[Math.max(0,i-step)],points[i]);
+    se.push(elevations[i]);sd.push(d);lb.push(i);
+  }
+  distances=sd;elevChart.data.labels=lb;elevChart.data.datasets[0].data=se;elevChart.update('none');
+}
+
+function addPoint(lat,lon,acc,alt){
+  const pt=[lat,lon];
+  if(points.length>0){const pe=elevations[elevations.length-1];if(alt!=null&&pe!=null){const diff=alt-pe;if(diff>0.5)totalUp+=diff;else if(diff<-0.5)totalDown+=Math.abs(diff);}}
+  points.push(pt);elevations.push(alt!=null?alt:null);
+  routeLayer.addLatLng(pt);
+  if(!startMarker)startMarker=L.circleMarker(pt,{radius:7,color:profile.color||'#2d9e5f',fillColor:profile.color||'#2d9e5f',fillOpacity:1,weight:2}).addTo(map);
+  if(currentMarker)map.removeLayer(currentMarker);
+  currentMarker=L.circleMarker(pt,{radius:6,color:'#fff',fillColor:profile.color||'#2d9e5f',fillOpacity:1,weight:2}).addTo(map);
+  document.getElementById('lat-d').textContent='Lat: '+lat.toFixed(5);
+  document.getElementById('lon-d').textContent='Lon: '+lon.toFixed(5);
+  document.getElementById('acc-d').textContent='±'+Math.round(acc)+' m';
+  document.getElementById('stat-pts').textContent=points.length;
+  if(alt!=null){document.getElementById('elev-current').textContent=Math.round(alt);document.getElementById('elev-up').textContent=Math.round(totalUp);document.getElementById('elev-down').textContent=Math.round(totalDown);document.getElementById('no-elev-notice').style.display='none';hasRealElev=true;updateElevChart();}
+  else if(!hasRealElev)document.getElementById('no-elev-notice').style.display='flex';
+  updateStats();
+}
+
+function updateStats(){
+  document.getElementById('stat-dist').textContent=totalDist().toFixed(2);
+  if(startTime){const el=(Date.now()-startTime-pauseOffset)/1000;const m=Math.floor(el/60),s=Math.floor(el%60);document.getElementById('stat-time').textContent=String(m).padStart(2,'0')+':'+String(s).padStart(2,'0');const d=totalDist();document.getElementById('stat-speed').textContent=el>0?(d/(el/3600)).toFixed(1):'0.0';}
+}
+
+function startGPS(){
+  if(!navigator.geolocation){startSim();return;}
+  navigator.geolocation.getCurrentPosition(
+    pos=>{map.setView([pos.coords.latitude,pos.coords.longitude],16);
+      watchId=navigator.geolocation.watchPosition(p=>{if(!tracking||paused)return;addPoint(p.coords.latitude,p.coords.longitude,p.coords.accuracy||5,p.coords.altitude);map.panTo([p.coords.latitude,p.coords.longitude]);},()=>startSim(),{enableHighAccuracy:true,maximumAge:2000,timeout:6000});},
+    ()=>startSim(),{enableHighAccuracy:true,timeout:6000});
+}
+
+function startSim(){
+  usingSimulation=true;document.getElementById('sim-notice').style.display='flex';
+  map.setView([simLat,simLon],16);
+  simInterval=setInterval(()=>{if(!tracking||paused)return;simAngle+=(Math.random()-0.4)*0.25;simLat+=Math.cos(simAngle)*0.00007;simLon+=Math.sin(simAngle)*0.00009;simElev+=(Math.random()-0.45)*3;simElev=Math.max(60,Math.min(160,simElev));addPoint(simLat,simLon,6,simElev);map.panTo([simLat,simLon]);},1200);
+}
+
+function resetTracker(){
+  points=[];elevations=[];distances=[];totalUp=0;totalDown=0;hasRealElev=false;
+  routeLayer.setLatLngs([]);
+  if(startMarker){map.removeLayer(startMarker);startMarker=null;}
+  if(currentMarker){map.removeLayer(currentMarker);currentMarker=null;}
+  ['stat-dist','stat-time','stat-speed','stat-pts'].forEach(id=>document.getElementById(id).textContent=id==='stat-dist'||id==='stat-speed'?'0.00':'stat-pts'?'0':'00:00');
+  document.getElementById('stat-dist').textContent='0.00';document.getElementById('stat-time').textContent='00:00';document.getElementById('stat-speed').textContent='0.0';document.getElementById('stat-pts').textContent='0';
+  document.getElementById('elev-current').textContent='—';document.getElementById('elev-up').textContent='0';document.getElementById('elev-down').textContent='0';
+  if(elevChart){elevChart.data.labels=[];elevChart.data.datasets[0].data=[];elevChart.update('none');}
+  routeLayer.setStyle({color:profile.color||'#2d9e5f'});
+  if(elevChart)elevChart.data.datasets[0].borderColor=profile.color||'#2d9e5f';
+}
+
+function handleStart(){
+  if(!profile.name){showToast('Bitte zuerst ein Profil anlegen');openProfile();return;}
+  if(tracking&&paused){paused=false;pauseOffset+=Date.now()-pauseStart;setStatus('active','Aufzeichnung...');document.getElementById('btn-pause').innerHTML='<i class="ti ti-player-pause"></i> Pause';document.getElementById('btn-pause').disabled=false;document.getElementById('btn-start').disabled=true;return;}
+  resetTracker();tracking=true;paused=false;startTime=Date.now();pauseOffset=0;
+  setStatus('active','Aufzeichnung...');
+  document.getElementById('btn-start').disabled=true;document.getElementById('btn-pause').disabled=false;document.getElementById('btn-stop').disabled=false;
+  timerInterval=setInterval(updateStats,1000);startGPS();
+}
+
+function handlePause(){
+  if(!paused){paused=true;pauseStart=Date.now();setStatus('paused','Pausiert');document.getElementById('btn-pause').innerHTML='<i class="ti ti-player-play"></i> Weiter';document.getElementById('btn-start').disabled=false;document.getElementById('btn-start').innerHTML='<i class="ti ti-player-play"></i> Weiter';}
+  else{paused=false;pauseOffset+=Date.now()-pauseStart;setStatus('active','Aufzeichnung...');document.getElementById('btn-pause').innerHTML='<i class="ti ti-player-pause"></i> Pause';document.getElementById('btn-start').disabled=true;document.getElementById('btn-start').innerHTML='<i class="ti ti-player-play"></i> Start';}
+}
+
+function handleStop(){
+  if(points.length<2){tracking=false;paused=false;if(watchId)navigator.geolocation.clearWatch(watchId);if(simInterval)clearInterval(simInterval);if(timerInterval)clearInterval(timerInterval);setStatus('','Bereit');document.getElementById('btn-start').disabled=false;document.getElementById('btn-start').innerHTML='<i class="ti ti-player-play"></i> Start';document.getElementById('btn-pause').disabled=true;document.getElementById('btn-stop').disabled=true;return;}
+  tracking=false;paused=false;
+  if(watchId)navigator.geolocation.clearWatch(watchId);
+  if(simInterval)clearInterval(simInterval);
+  if(timerInterval)clearInterval(timerInterval);
+  setStatus('','Abgeschlossen');
+  document.getElementById('btn-start').disabled=false;document.getElementById('btn-start').innerHTML='<i class="ti ti-player-play"></i> Neue Route';
+  document.getElementById('btn-pause').disabled=true;document.getElementById('btn-stop').disabled=true;
+  if(points.length>1)map.fitBounds(routeLayer.getBounds(),{padding:[30,30]});
+  saveRoute();
+}
+
+function handleCenter(){if(points.length){const l=points[points.length-1];map.setView(l,map.getZoom());}}
+function setStatus(cls,text){document.getElementById('status-dot').className=cls;document.getElementById('status-text').textContent=text;}
+
+// ── SAVE ROUTE ──
+function saveRoute(){
+  const routes=JSON.parse(localStorage.getItem('pt_routes')||'[]');
+  const elapsed=startTime?(Date.now()-startTime-pauseOffset)/1000:0;
+  const route={
+    id: Date.now(),
+    savedAt: Date.now(),
+    userName: profile.name,
+    userColor: profile.color,
+    userAvatar: profile.avatar,
+    date: new Date().toLocaleDateString('de-DE',{day:'2-digit',month:'2-digit',year:'numeric'}),
+    time: new Date().toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'}),
+    dist: totalDist().toFixed(2),
+    duration: Math.round(elapsed),
+    elevUp: Math.round(totalUp),
+    elevDown: Math.round(totalDown),
+    points: points,
+    elevations: elevations
+  };
+  routes.unshift(route);
+  if(routes.length>50)routes.pop();
+  localStorage.setItem('pt_routes',JSON.stringify(routes));
+  showToast('Route gespeichert!');
+}
+
+// ── GPX EXPORT ──
+function exportGPX(){
+  if(points.length<2){showToast('Keine Route zum Exportieren');return;}
+  const trkpts=points.map((p,i)=>{const e=elevations[i];return`    <trkpt lat="${p[0].toFixed(6)}" lon="${p[1].toFixed(6)}">${e!=null?`<ele>${e.toFixed(1)}</ele>`:''}</trkpt>`;}).join('\n');
+  const gpx=`<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="PathTracker">\n  <trk><name>${profile.name||'Route'}</name><trkseg>\n${trkpts}\n  </trkseg></trk>\n</gpx>`;
+  const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([gpx],{type:'application/gpx+xml'}));a.download=`route_${Date.now()}.gpx`;a.click();
+}
+
+// ── AGE-BASED COLOR ──
+// < 48h  → grün  (Nutzerfarbe)
+// 48–120h → helles Rot
+// > 120h  → dunkles Rot
+const COLOR_FRESH  = null;          // Nutzerfarbe verwenden
+const COLOR_OLD1   = '#f87171';     // helles Rot  (48–120 h)
+const COLOR_OLD2   = '#991b1b';     // dunkles Rot (>120 h)
+const H48  = 48  * 60 * 60 * 1000;
+const H120 = 120 * 60 * 60 * 1000;
+
+function getRouteColor(r) {
+  const saved = r.savedAt || r.id; // id = Date.now() bei Aufzeichnung
+  const age   = Date.now() - saved;
+  if (age < H48)  return r.userColor || '#2d9e5f';
+  if (age < H120) return COLOR_OLD1;
+  return COLOR_OLD2;
+}
+
+function getAgeLabel(r) {
+  const saved = r.savedAt || r.id;
+  const age   = Date.now() - saved;
+  const h = Math.floor(age / 3600000);
+  if (h < 1)      return 'Gerade aufgezeichnet';
+  if (h < 48)     return `Vor ${h} Std.`;
+  if (h < 120)    return `Vor ${Math.floor(h/24)}T ${h%24}Std.`;
+  return `Vor ${Math.floor(h/24)} Tagen`;
+}
+
+function getAgeBadge(r) {
+  const saved = r.savedAt || r.id;
+  const age   = Date.now() - saved;
+  if (age < H48)  return { label: '< 48 h', bg: '#dcfce7', color: '#166534' };
+  if (age < H120) return { label: '48–120 h', bg: '#fee2e2', color: '#991b1b' };
+  return { label: '> 120 h', bg: '#fca5a5', color: '#7f1d1d' };
+}
+
+// ── ROUTES VIEW ──
+let compareMap=null, compareLayers=[];
+
+function initCompareMap(){
+  if(compareMap)return;
+  compareMap=L.map('compare-map',{zoomControl:true}).setView([51.5145,7.4653],12);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
+    attribution:'© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',maxZoom:19
+  }).addTo(compareMap);
+
+  // Legende unten links
+  const legend = L.control({ position: 'bottomleft' });
+  legend.onAdd = () => {
+    const d = L.DomUtil.create('div');
+    d.style.cssText = 'background:rgba(255,255,255,0.95);border:0.5px solid rgba(0,0,0,0.1);border-radius:9px;padding:8px 11px;font-size:11px;font-family:Outfit,sans-serif;line-height:1.8;box-shadow:0 1px 4px rgba(0,0,0,0.08)';
+    d.innerHTML = `
+      <div style="font-weight:600;margin-bottom:4px;color:#1a1a18">Alter der Route</div>
+      <div style="display:flex;align-items:center;gap:6px"><span style="display:inline-block;width:28px;height:4px;border-radius:2px;background:#2d9e5f"></span> &lt; 48 Stunden</div>
+      <div style="display:flex;align-items:center;gap:6px"><span style="display:inline-block;width:28px;height:4px;border-radius:2px;background:#f87171"></span> 48 – 120 Stunden</div>
+      <div style="display:flex;align-items:center;gap:6px"><span style="display:inline-block;width:28px;height:4px;border-radius:2px;background:#991b1b"></span> &gt; 120 Stunden</div>`;
+    return d;
+  };
+  legend.addTo(compareMap);
+}
+
+function renderRoutesView(){
+  initCompareMap();
+  compareLayers.forEach(l=>compareMap.removeLayer(l));compareLayers=[];
+  const routes=JSON.parse(localStorage.getItem('pt_routes')||'[]');
+  const list=document.getElementById('route-list');
+  const empty=document.getElementById('empty-routes');
+  if(!routes.length){list.innerHTML='';empty.style.display='block';return;}
+  empty.style.display='none';
+  list.innerHTML=routes.map(r=>buildRouteCard(r)).join('');
+  const allPts=[];
+  routes.forEach(r=>{
+    if(r.points&&r.points.length>1){
+      const col = getRouteColor(r);
+      const layer=L.polyline(r.points,{color:col,weight:3,opacity:0.88,lineJoin:'round',lineCap:'round'}).addTo(compareMap);
+      const start=r.points[0];
+      L.circleMarker(start,{radius:5,color:col,fillColor:col,fillOpacity:1,weight:2})
+        .bindTooltip(`${r.userName} – ${getAgeLabel(r)}`,{permanent:false})
+        .addTo(compareMap);
+      compareLayers.push(layer);
+      r.points.forEach(p=>allPts.push(p));
+    }
+  });
+  if(allPts.length>1){
+    try{compareMap.fitBounds(L.latLngBounds(allPts),{padding:[24,24]});}catch(e){}
+  }
+}
+
+function buildRouteCard(r){
+  const mins=Math.floor(r.duration/60),secs=r.duration%60;
+  const dur=String(mins).padStart(2,'0')+':'+String(secs).padStart(2,'0');
+  const avatarHtml=r.userAvatar
+    ?`<img src="${r.userAvatar}" alt="${r.userName}" />`
+    :`<span style="color:#fff">${getInitials(r.userName)}</span>`;
+  const col   = getRouteColor(r);
+  const badge = getAgeBadge(r);
+  return `<div class="route-card">
+    <div class="route-avatar" style="background:${r.userColor||'#2d9e5f'}">${avatarHtml}</div>
+    <div class="route-info">
+      <div class="route-name" style="display:flex;align-items:center;gap:7px">
+        ${r.userName||'Unbekannt'}
+        <span style="font-size:10px;font-weight:500;padding:2px 7px;border-radius:10px;background:${badge.bg};color:${badge.color}">${badge.label}</span>
+      </div>
+      <div class="route-meta" style="display:flex;align-items:center;gap:6px">
+        <span style="display:inline-block;width:20px;height:3px;border-radius:2px;background:${col};flex-shrink:0"></span>
+        ${r.date} · ${r.time||''} · ${getAgeLabel(r)}
+      </div>
+    </div>
+    <div class="route-stats">
+      <div class="route-stat">
+        <div class="route-stat-val">${r.dist}</div>
+        <div class="route-stat-lbl">km</div>
+      </div>
+      <div class="route-stat">
+        <div class="route-stat-val">${dur}</div>
+        <div class="route-stat-lbl">Zeit</div>
+      </div>
+      <div class="route-stat" title="Aufstieg / Abstieg">
+        <div class="route-stat-val" style="font-size:12px">+${r.elevUp}/-${r.elevDown}</div>
+        <div class="route-stat-lbl">m Höhe</div>
+      </div>
+    </div>
+    <div class="route-actions">
+      <button class="icon-btn" onclick="zoomToRoute(${r.id})" title="Auf Karte zeigen"><i class="ti ti-zoom-in" aria-hidden="true"></i></button>
+      <button class="icon-btn" onclick="exportRouteGPX(${r.id})" title="GPX exportieren"><i class="ti ti-download" aria-hidden="true"></i></button>
+      <button class="icon-btn danger" onclick="deleteRoute(${r.id})" title="Löschen"><i class="ti ti-trash" aria-hidden="true"></i></button>
+    </div>
+  </div>`;
+}
+
+function zoomToRoute(id){
+  const routes=JSON.parse(localStorage.getItem('pt_routes')||'[]');
+  const r=routes.find(x=>x.id===id);
+  if(r&&r.points&&r.points.length>1){
+    try{compareMap.fitBounds(L.latLngBounds(r.points),{padding:[30,30]});}catch(e){}
+  }
+}
+
+function deleteRoute(id){
+  if(!confirm('Route löschen?'))return;
+  const routes=JSON.parse(localStorage.getItem('pt_routes')||'[]').filter(r=>r.id!==id);
+  localStorage.setItem('pt_routes',JSON.stringify(routes));
+  renderRoutesView();showToast('Route gelöscht');
+}
+
+function exportRouteGPX(id){
+  const routes=JSON.parse(localStorage.getItem('pt_routes')||'[]');
+  const r=routes.find(x=>x.id===id);if(!r)return;
+  const trkpts=r.points.map((p,i)=>{const e=r.elevations&&r.elevations[i];return`    <trkpt lat="${p[0].toFixed(6)}" lon="${p[1].toFixed(6)}">${e!=null?`<ele>${Number(e).toFixed(1)}</ele>`:''}</trkpt>`;}).join('\n');
+  const gpx=`<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="PathTracker">\n  <trk><name>${r.userName} ${r.date}</name><trkseg>\n${trkpts}\n  </trkseg></trk>\n</gpx>`;
+  const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([gpx],{type:'application/gpx+xml'}));a.download=`route_${r.userName}_${r.id}.gpx`;a.click();
+}
+
+// ── GPX IMPORT ──
+function importGPX(e){
+  const files=Array.from(e.target.files);
+  let imported=0;
+  files.forEach(file=>{
+    const reader=new FileReader();
+    reader.onload=ev=>{
+      try{
+        const parser=new DOMParser();
+        const xml=parser.parseFromString(ev.target.result,'text/xml');
+        const trkpts=xml.querySelectorAll('trkpt');
+        if(!trkpts.length)return;
+        const pts=[],elevs=[];
+        trkpts.forEach(tp=>{
+          const lat=parseFloat(tp.getAttribute('lat')),lon=parseFloat(tp.getAttribute('lon'));
+          const eleEl=tp.querySelector('ele');const ele=eleEl?parseFloat(eleEl.textContent):null;
+          if(!isNaN(lat)&&!isNaN(lon)){pts.push([lat,lon]);elevs.push(ele);}
+        });
+        if(pts.length<2)return;
+        let d=0;for(let i=1;i<pts.length;i++)d+=haversine(pts[i-1],pts[i]);
+        const nameEl=xml.querySelector('name');
+        const rawName=nameEl?nameEl.textContent.trim():'';
+        const routes=JSON.parse(localStorage.getItem('pt_routes')||'[]');
+        routes.unshift({
+          id:Date.now()+Math.random(),
+          savedAt: Date.now(),
+          userName: rawName||file.name.replace('.gpx',''),
+          userColor: COLORS[routes.length%COLORS.length],
+          userAvatar: null,
+          date: new Date().toLocaleDateString('de-DE',{day:'2-digit',month:'2-digit',year:'numeric'}),
+          time: new Date().toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'}),
+          dist: d.toFixed(2),
+          duration: 0,
+          elevUp: 0, elevDown: 0,
+          points: pts, elevations: elevs,
+          imported: true
+        });
+        localStorage.setItem('pt_routes',JSON.stringify(routes));
+        imported++;
+        if(imported===files.length){renderRoutesView();showToast(`${imported} Route(n) importiert`);}
+      }catch(err){showToast('Fehler beim Importieren');}
+    };
+    reader.readAsText(file);
+  });
+  e.target.value='';
+}
+
+// ── TOAST ──
+function showToast(msg){
+  const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');
+  setTimeout(()=>t.classList.remove('show'),2500);
+}
+
+// ── INIT ──
+window.addEventListener('load',()=>{
+  updateNavAvatar();
+  initMap();
+  initElevChart();
+  if(!profile.name)setTimeout(()=>{openProfile();},400);
+});
+</script>
+</body>
+</html>
